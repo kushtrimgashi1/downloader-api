@@ -4,31 +4,38 @@ const PORT = process.env.PORT || 3000;
 
 app.use((req,res,next)=>{
   res.header('Access-Control-Allow-Origin','*');
-  res.header('Access-Control-Allow-Methods','GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Methods','*');
   res.header('Access-Control-Allow-Headers','*');
   if(req.method==='OPTIONS') return res.sendStatus(200);
   next();
 });
 
-app.get('/', (req,res)=> res.json({status:'ONLINE', api:'downloader-api-czu3'}));
+app.get('/', (req,res)=> res.json({status:'ONLINE', version:'3'}));
 
 app.get('/download', async (req,res)=>{
   const url = req.query.url;
-  if(!url) return res.json({error:'Mungon url'});
+  if(!url) return res.status(400).json({error:'url missing'});
   try{
-    // Fallback i shpejte pa yt-dlp per TikTok/Insta - kthen url direkt per test
-    // Nese yt-dlp s'punon, perdorim TikWM per TikTok
     if(url.includes('tiktok.com')){
       const api = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
-      const r = await fetch(api).then(x=>x.json());
-      if(r.data && r.data.play) return res.json({downloadUrl: r.data.play});
+      const data = await fetch(api).then(r=>r.json());
+      if(data?.data?.play) return res.json({downloadUrl: data.data.play, type:'tiktok'});
     }
-    // Per Insta/FB - provojme yt-dlp nese eshte gati
-    const { default: YT } = await import('yt-dlp-wrap').then(m=>m).catch(()=>({}));
-    res.json({downloadUrl: url, message:'fallback - provo TikTok per testim'});
-  }catch(e){
-    res.json({error:e.message, downloadUrl: url});
-  }
+    return res.json({downloadUrl: url});
+  }catch(e){ res.json({error:e.message}); }
 });
 
-app.listen(PORT, ()=> console.log('ONLINE '+PORT));
+// KY E BEN SHKARKIMIN REAL
+app.get('/proxy', async (req,res)=>{
+  try{
+    const videoUrl = req.query.url;
+    if(!videoUrl) return res.status(400).send('missing url');
+    const response = await fetch(videoUrl);
+    const buffer = await response.arrayBuffer();
+    res.header('Content-Disposition', 'attachment; filename="video.mp4"');
+    res.header('Content-Type', 'video/mp4');
+    res.send(Buffer.from(buffer));
+  }catch(e){ res.status(500).send(e.message); }
+});
+
+app.listen(PORT, ()=> console.log('V3 ONLINE'));
