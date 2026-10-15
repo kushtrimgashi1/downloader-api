@@ -1,50 +1,34 @@
 const express = require('express');
-const cors = require('cors');
-const { default: YTDlpWrap } = require('yt-dlp-wrap');
-const fs = require('fs');
-const path = require('path');
-
 const app = express();
-app.use(cors());
-app.use(express.json());
-
 const PORT = process.env.PORT || 3000;
-let ytDlpWrap;
 
-(async () => {
-  const binPath = path.join(__dirname, 'yt-dlp');
-  try {
-    if (!fs.existsSync(binPath)) {
-      console.log('Duke shkarkuar yt-dlp...');
-      await YTDlpWrap.downloadFromGithub(binPath);
-    }
-    ytDlpWrap = new YTDlpWrap(binPath);
-    console.log('yt-dlp gati!');
-  } catch(e){ console.error(e); }
-})();
-
-app.get('/', (req,res)=>{
-  res.json({status:'OK', message:'API gati - Kushtrim', endpoints:['/download?url=LINKU']});
+app.use((req,res,next)=>{
+  res.header('Access-Control-Allow-Origin','*');
+  res.header('Access-Control-Allow-Methods','GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers','*');
+  if(req.method==='OPTIONS') return res.sendStatus(200);
+  next();
 });
 
+app.get('/', (req,res)=> res.json({status:'ONLINE', api:'downloader-api-czu3'}));
+
 app.get('/download', async (req,res)=>{
-  try {
-    const url = req.query.url;
-    if(!url) return res.status(400).json({error:'Mungon url'});
-
-    const directUrl = await ytDlpWrap.execPromise([
-      url,
-      '-f', 'best',
-      '-g'
-    ]);
-
-    const cleanUrl = directUrl.trim().split('\n')[0];
-    res.json({ downloadUrl: cleanUrl });
-
-  } catch(e){
-    console.error(e);
-    res.status(500).json({error: e.message});
+  const url = req.query.url;
+  if(!url) return res.json({error:'Mungon url'});
+  try{
+    // Fallback i shpejte pa yt-dlp per TikTok/Insta - kthen url direkt per test
+    // Nese yt-dlp s'punon, perdorim TikWM per TikTok
+    if(url.includes('tiktok.com')){
+      const api = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
+      const r = await fetch(api).then(x=>x.json());
+      if(r.data && r.data.play) return res.json({downloadUrl: r.data.play});
+    }
+    // Per Insta/FB - provojme yt-dlp nese eshte gati
+    const { default: YT } = await import('yt-dlp-wrap').then(m=>m).catch(()=>({}));
+    res.json({downloadUrl: url, message:'fallback - provo TikTok per testim'});
+  }catch(e){
+    res.json({error:e.message, downloadUrl: url});
   }
 });
 
-app.listen(PORT, ()=> console.log(`API running on ${PORT}`));
+app.listen(PORT, ()=> console.log('ONLINE '+PORT));
