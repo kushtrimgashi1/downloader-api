@@ -10,32 +10,41 @@ app.use((req,res,next)=>{
   next();
 });
 
-app.get('/', (req,res)=> res.json({status:'ONLINE', version:'3'}));
+app.get('/', (req,res)=> res.json({status:'ONLINE', v:'4-final'}));
 
 app.get('/download', async (req,res)=>{
-  const url = req.query.url;
-  if(!url) return res.status(400).json({error:'url missing'});
+  let url = req.query.url;
+  if(!url) return res.json({error:'no url'});
   try{
-    if(url.includes('tiktok.com')){
-      const api = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
-      const data = await fetch(api).then(r=>r.json());
-      if(data?.data?.play) return res.json({downloadUrl: data.data.play, type:'tiktok'});
+    // Zgjerom vm.tiktok.com ne link te plote
+    if(url.includes('vm.tiktok.com') || url.includes('vt.tiktok.com')){
+      const r = await fetch(url, {redirect:'follow'});
+      url = r.url;
     }
-    return res.json({downloadUrl: url});
+    // Provo 3 API per TikTok
+    const apis = [
+      `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
+      `https://tikwm.com/api/?url=${encodeURIComponent(url)}&hd=1`
+    ];
+    for(const api of apis){
+      try{
+        const d = await fetch(api, {headers:{'User-Agent':'Mozilla/5.0'}}).then(x=>x.json());
+        if(d?.data?.play) return res.json({downloadUrl:d.data.play, cover:d.data.cover});
+      }catch(e){}
+    }
+    return res.json({downloadUrl:null, error:'API bllokuar perkohesisht, provo prap'});
   }catch(e){ res.json({error:e.message}); }
 });
 
-// KY E BEN SHKARKIMIN REAL
 app.get('/proxy', async (req,res)=>{
   try{
-    const videoUrl = req.query.url;
-    if(!videoUrl) return res.status(400).send('missing url');
-    const response = await fetch(videoUrl);
-    const buffer = await response.arrayBuffer();
-    res.header('Content-Disposition', 'attachment; filename="video.mp4"');
-    res.header('Content-Type', 'video/mp4');
-    res.send(Buffer.from(buffer));
+    const u = req.query.url;
+    const r = await fetch(u, {headers:{'User-Agent':'Mozilla/5.0'}});
+    const b = await r.arrayBuffer();
+    res.header('Content-Disposition','attachment; filename="tiktok.mp4"');
+    res.header('Content-Type','video/mp4');
+    res.send(Buffer.from(b));
   }catch(e){ res.status(500).send(e.message); }
 });
 
-app.listen(PORT, ()=> console.log('V3 ONLINE'));
+app.listen(PORT, ()=> console.log('V4 LIVE'));
