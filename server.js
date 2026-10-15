@@ -1,34 +1,30 @@
 const express = require('express');
-const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({origin:'*'}));
-app.use(express.json());
+app.use((req,res,next)=>{
+  res.header('Access-Control-Allow-Origin','*');
+  res.header('Access-Control-Allow-Methods','*');
+  res.header('Access-Control-Allow-Headers','*');
+  next();
+});
 
-app.get('/', (req,res)=> res.json({status:'ONLINE', version:'V9-HD-UNIVERSAL', fb:'ok', tiktok:'ok'}));
+app.get('/', (req,res)=> res.json({status:'ONLINE', version:'V9.1-FIXED'}));
 
 app.get('/download', async (req,res)=>{
   let url = req.query.url || '';
   if(!url) return res.json({error:'no url'});
 
   try{
-    // 1. ZGJERO krejt short linket
-    if(url.includes('vm.tiktok') || url.includes('vt.tiktok') || url.includes('facebook.com/share') || url.includes('fb.watch')){
+    // 1. Zgjerro vm.tiktok dhe fb.watch
+    if(url.includes('vm.tiktok') || url.includes('vt.tiktok') || url.includes('fb.watch') || url.includes('facebook.com/share')){
       try{
-        const r = await fetch(url, {
-          redirect:'follow',
-          headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36','Accept':'text/html'}
-        });
-        // Per FB share, provo me marr final URL nga HTML
-        const html = await r.text().catch(()=> '');
-        const match = html.match(/https:\/\/www\.facebook\.com\/reel\/\d+/) || html.match(/https:\/\/www\.facebook\.com\/watch\/\?v=\d+/);
-        if(match) url = match[0];
-        else url = r.url || url;
+        const r = await fetch(url, {redirect:'follow', headers:{'User-Agent':'Mozilla/5.0'}});
+        url = r.url || url;
       }catch(e){}
     }
 
-    // 2. TikTok me TikWM HD (me i shpejti)
+    // 2. TIKTOK - TikWM HD
     if(url.includes('tiktok.com')){
       try{
         const body = `url=${encodeURIComponent(url)}&count=12&cursor=0&web=1&hd=1`;
@@ -46,42 +42,50 @@ app.get('/download', async (req,res)=>{
           });
         }
       }catch(e){}
+
+      // Backup TikTok - TikMate
+      try{
+        const tm = await fetch(`https://api.tikmate.app/api/look?url=${encodeURIComponent(url)}`).then(r=>r.json());
+        if(tm?.token){
+          const dl = `https://tikmate.app/download/${tm.token}/${tm.id}.mp4?hd=1`;
+          return res.json({downloadUrl: dl, downloadUrlHD: dl, downloadUrlSD: dl});
+        }
+      }catch(e){}
     }
 
-    // 3. UNIVERSAL YT-DLP per FB, Insta, TikTok (HD)
-    const ytDlp = (await import('yt-dlp-exec')).default;
-    const result = await ytDlp(url, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      noCheckCertificate: true,
-      preferFreeFormats: true,
-      addHeader: ['referer:facebook.com']
-    });
-
-    if(result?.url || result?.requested_downloads?.[0]?.url || result?.formats){
-      let bestUrl = result.url || result.requested_downloads?.[0]?.url;
-      if(!bestUrl && result.formats){
-        // merr formatin me te mire HD
-        const best = result.formats.filter(f=>f.vcodec!=='none').sort((a,b)=>(b.height||0)-(a.height||0))[0];
-        bestUrl = best?.url;
-      }
-      if(bestUrl){
-        return res.json({
-          downloadUrl: bestUrl,
-          downloadUrlHD: bestUrl,
-          downloadUrlSD: bestUrl,
-          cover: result.thumbnail,
-          title: result.title
-        });
-      }
+    // 3. FACEBOOK & INSTAGRAM - Cobalt API (instance qe punon ne Render)
+    const cobaltEndpoints = ['https://api.cobalt.tools/api/json','https://co.wuk.sh/api/json'];
+    for(const ep of cobaltEndpoints){
+      try{
+        const c = await fetch(ep, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Accept':'application/json'},
+          body: JSON.stringify({url: url, vQuality:'1080', filenamePattern:'basic'})
+        }).then(r=>r.json());
+        if(c?.url){
+          return res.json({downloadUrl: c.url, downloadUrlHD: c.url, downloadUrlSD: c.url});
+        }
+      }catch(e){}
     }
+
+    // 4. Fallback Insta/FB - SaveInsta API
+    try{
+      const fd = await fetch('https://v3.saveinsta.app/api/ajaxSearch', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'Mozilla/5.0'},
+        body: `q=${encodeURIComponent(url)}&t=media&v=v2&cftoken=`
+      }).then(r=>r.json());
+      if(fd?.data){
+        const m = fd.data.match(/href="([^"]+)"/);
+        if(m) return res.json({downloadUrl: m[1], downloadUrlHD: m[1], downloadUrlSD: m[1]});
+      }
+    }catch(e){}
 
     res.json({error:'Video nuk u gjet, provo link tjeter - sigurohu qe videoja eshte publike'});
 
   }catch(e){
-    console.error(e);
-    res.json({error:'Video nuk u gjet, provo link tjeter', detail:e.message.slice(0,100)});
+    res.json({error:'Video nuk u gjet, provo link tjeter', detail:e.message});
   }
 });
 
-app.listen(PORT, ()=> console.log('V9 UNIVERSAL ONLINE'));
+app.listen(PORT, ()=> console.log('V9.1 ONLINE'));
